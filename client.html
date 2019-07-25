@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <style>
+        button {
+            padding: 8px 16px;
+        }
+    
+        pre {
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+    
+        video {
+            width: 100%;
+        }
+    
+        .option {
+            margin-bottom: 8px;
+        }
+    
+        #media {
+            max-width: 1280px;
+        }
+    </style>
+</head>
+<body>
+<h2>State</h2>
+<p>
+    ICE gathering state: <span id="ice-gathering-state"></span>
+</p>
+<p>
+    ICE connection state: <span id="ice-connection-state"></span>
+</p>
+<p>
+    Signaling state: <span id="signaling-state"></span>
+</p>
+<button id="join" onclick="join()">Join</button>
+<div id="media">
+    <h2>Media</h2>
+
+    <audio id="audio" autoplay="true"></audio>
+    <video id="video" autoplay="true" playsinline="true" controls></video>
+</div>
+<script>
+var iceConnectionLog = document.getElementById('ice-connection-state'),
+    iceGatheringLog = document.getElementById('ice-gathering-state'),
+    signalingLog = document.getElementById('signaling-state');
+
+// peer connection
+var config = {
+      sdpSemantics: 'unified-plan',
+    };
+
+pc = new RTCPeerConnection(config);
+
+// connect audio / video
+let count = 0
+pc.addEventListener('track', function (evt) {
+    console.log("Track event: ", count, evt)
+    if (evt.track.kind == 'video')
+    document.getElementById('video').srcObject = evt.streams[0];
+    else
+    document.getElementById('audio').srcObject = evt.streams[0];
+    count ++
+});
+
+// register some listeners to help debugging
+pc.addEventListener('icegatheringstatechange', function() {
+    iceGatheringLog.textContent += ' -> ' + pc.iceGatheringState;
+}, false);
+iceGatheringLog.textContent = pc.iceGatheringState;
+
+pc.addEventListener('iceconnectionstatechange', function() {
+    iceConnectionLog.textContent += ' -> ' + pc.iceConnectionState;
+}, false);
+iceConnectionLog.textContent = pc.iceConnectionState;
+
+pc.addEventListener('signalingstatechange', function() {
+    signalingLog.textContent += ' -> ' + pc.signalingState;
+}, false);
+signalingLog.textContent = pc.signalingState;
+
+async function join() {
+    document.getElementById('join').style.display = 'none';
+    let { offer } = await fetch('/offer', {
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        method: 'GET'
+    })
+    .then(e => e.json())
+    .catch(e => alert(e))
+
+    console.log(offer);
+
+    await pc.setRemoteDescription({
+      sdp: offer.sdp,
+      type: offer.type
+    });
+
+    console.log("Create answer")
+    await pc.createAnswer()
+    .then(answer => {
+        console.log("answer \n", answer)
+       return  pc.setLocalDescription(answer)
+    })
+    .then(() => {
+        var answer = pc.localDescription;
+        console.log("Send to client")
+        return fetch("/answer", {
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            sdp: answer.sdp,
+            type: answer.type
+        }),
+        method: 'POST'
+        }).then(e => e.json())
+    })
+    .then(e => console.log(e))
+    .catch(e => alert(e))
+}
+</script>
+</body>
+</html>
